@@ -457,13 +457,35 @@ const Dashboard = () => {
                 <div>
                   <h4 style={{ marginBottom: '0.5rem' }}>🧠 Available Tests</h4>
                   {dashboardData.semesterContent.mcqTests.slice(0, 3).map(test => (
-                    <div key={test._id} style={{ padding: '0.75rem', backgroundColor: '#faf5ff', borderRadius: '0.5rem', marginBottom: '0.5rem' }}>
+                    <Link 
+                      key={test._id} 
+                      to={`/test/${test._id}`}
+                      style={{ 
+                        display: 'block',
+                        padding: '0.75rem', 
+                        backgroundColor: '#faf5ff', 
+                        borderRadius: '0.5rem', 
+                        marginBottom: '0.5rem',
+                        textDecoration: 'none',
+                        color: 'inherit',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.target.style.backgroundColor = '#f3e8ff';
+                        e.target.style.transform = 'translateY(-1px)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.backgroundColor = '#faf5ff';
+                        e.target.style.transform = 'translateY(0)';
+                      }}
+                    >
                       <strong>{test.title}</strong>
                       <p style={{ margin: '0.25rem 0', fontSize: '0.9rem' }}>{test.description}</p>
                       <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
                         {test.questions?.length || 0} questions • {test.timeLimit} minutes
                       </div>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               )}

@@ -1,20 +1,20 @@
 require('dotenv').config({ path: './backend/.env' });
-const huggingfaceService = require('./backend/src/services/huggingfaceService');
+const geminiService = require('./backend/src/services/huggingfaceService');
 
-async function testHuggingFace() {
-  console.log('Testing Hugging Face API integration...');
+async function testGemini() {
+  console.log('Testing Gemini API integration...');
   
   const testQuestion = "What is machine learning?";
   const testContext = "Machine learning is a subset of artificial intelligence that enables computers to learn and make decisions from data without being explicitly programmed.";
   
   try {
-    const response = await huggingfaceService.answerQuestion(testContext, testQuestion);
+    const response = await geminiService.answerQuestion(testContext, testQuestion);
     
     if (response) {
-      console.log('✅ Hugging Face API working!');
+      console.log('✅ Gemini API working!');
       console.log('Response:', response);
     } else {
-      console.log('❌ No response from Hugging Face API');
+      console.log('❌ No response from Gemini API');
       console.log('Check your API key in backend/.env file');
     }
   } catch (error) {
@@ -22,4 +22,4 @@ async function testHuggingFace() {
   }
 }
 
-testHuggingFace();
+testGemini();

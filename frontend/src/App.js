@@ -17,6 +17,7 @@ import AdminNotes from './pages/AdminNotes';
 import AdminTimetable from './pages/AdminTimetable';
 import AdminImportantNotes from './pages/AdminImportantNotes';
 import AdminMCQ from './pages/AdminMCQ';
+import TestTaker from './pages/TestTaker';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminProtectedRoute from './components/AdminProtectedRoute';
 
@@ -93,6 +94,11 @@ function App() {
                 <AdminProtectedRoute>
                   <AdminMCQ />
                 </AdminProtectedRoute>
+              } />
+              <Route path="/test/:testId" element={
+                <ProtectedRoute>
+                  <TestTaker />
+                </ProtectedRoute>
               } />
             </Routes>
           </div>

@@ -8,6 +8,7 @@ const AdminNote = require('../models/AdminNote');
 const Timetable = require('../models/Timetable');
 const ImportantNote = require('../models/ImportantNote');
 const MCQTest = require('../models/MCQTest');
+const User = require('../models/User');
 
 const router = express.Router();
 
@@ -157,6 +158,27 @@ router.post('/mcq-tests', adminAuth, async (req, res) => {
     res.json(test);
   } catch (error) {
     console.error('MCQ creation error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get dashboard statistics
+router.get('/dashboard-stats', async (req, res) => {
+  try {
+    const [userCount, notesCount, mcqCount, importantNotesCount] = await Promise.all([
+      User.countDocuments(),
+      AdminNote.countDocuments(),
+      MCQTest.countDocuments(),
+      ImportantNote.countDocuments()
+    ]);
+    
+    res.json({
+      activeStudents: userCount,
+      totalNotes: notesCount,
+      mcqTests: mcqCount,
+      notifications: importantNotesCount
+    });
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });

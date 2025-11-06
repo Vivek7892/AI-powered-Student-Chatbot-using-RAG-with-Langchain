@@ -1,51 +1,71 @@
-class HuggingFaceService {
+class GeminiService {
   constructor() {
-    this.apiKey = process.env.HUGGINGFACE_API_KEY || process.env.HF_TOKEN;
-    this.baseUrl = 'https://api-inference.huggingface.co/models';
-    console.log('HuggingFace Service initialized with API key:', this.apiKey ? 'Present' : 'Missing');
+    this.apiKey = process.env.GEMINI_API_KEY;
+    this.baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent';
+    console.log('Gemini Service initialized with API key:', this.apiKey ? 'Present' : 'Missing');
   }
 
   async generateResponse(prompt) {
-    return `Hello! I'm your AI study assistant.`;
+    if (!this.apiKey) {
+      throw new Error('Gemini API key not configured');
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}?key=${this.apiKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{ text: prompt }]
+          }]
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Gemini API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response generated';
+    } catch (error) {
+      console.error('Gemini API error:', error);
+      throw error;
+    }
   }
 
   async answerQuestion(context, question) {
-    console.log('Question:', question);
-    
-    const q = question.toLowerCase();
-    const lines = context.split('\n').filter(l => l.trim());
-    
-    // Direct keyword search
-    for (let line of lines) {
-      const lineLower = line.toLowerCase();
-      
-      if (q.includes('what is dbms') && lineLower.includes('database management system')) {
-        return line;
-      }
-      
-      if (q.includes('advantages') && lineLower.includes('advantage')) {
-        return line;
-      }
-      
-      if (q.includes('components') && lineLower.includes('component')) {
-        return line;
-      }
-      
-      if (q.includes('architecture') && lineLower.includes('architecture')) {
-        return line;
-      }
+    if (!this.apiKey) {
+      throw new Error('Gemini API key not configured');
     }
-    
-    // Find any line with question keywords
-    const words = q.split(' ').filter(w => w.length > 2);
-    for (let line of lines) {
-      if (words.some(word => line.toLowerCase().includes(word))) {
-        return line;
+
+    try {
+      const response = await fetch(`${this.baseUrl}?key=${this.apiKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: `Context: ${context}\n\nQuestion: ${question}\n\nPlease answer the question based on the provided context.`
+            }]
+          }]
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Gemini API error: ${response.status}`);
       }
+
+      const data = await response.json();
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || 'No answer generated';
+    } catch (error) {
+      console.error('Gemini API error:', error);
+      throw error;
     }
-    
-    return 'No answer found in document.';
   }
 }
 
-module.exports = new HuggingFaceService();
+module.exports = new GeminiService();

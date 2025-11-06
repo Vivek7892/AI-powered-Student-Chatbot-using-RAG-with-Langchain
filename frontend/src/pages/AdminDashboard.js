@@ -7,6 +7,12 @@ const AdminDashboard = () => {
   const [adminData, setAdminData] = useState(null);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [files, setFiles] = useState({ notes: [], importantNotes: [], timetables: [] });
+  const [stats, setStats] = useState({
+    activeStudents: 0,
+    totalNotes: 0,
+    mcqTests: 0,
+    notifications: 0
+  });
 
   useEffect(() => {
     const data = localStorage.getItem('adminData');
@@ -14,6 +20,7 @@ const AdminDashboard = () => {
     
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     fetchFiles();
+    fetchStats();
     return () => clearInterval(timer);
   }, []);
 
@@ -32,6 +39,16 @@ const AdminDashboard = () => {
       });
     } catch (error) {
       console.error('Error fetching files:', error);
+    }
+  };
+
+  const fetchStats = async () => {
+    try {
+      const response = await fetch('http://localhost:5001/api/admin/dashboard-stats');
+      const data = await response.json();
+      setStats(data);
+    } catch (error) {
+      console.error('Error fetching stats:', error);
     }
   };
 
@@ -80,11 +97,11 @@ const AdminDashboard = () => {
     }
   ];
 
-  const stats = [
-    { label: 'Active Students', value: '1,234', change: '+12%' },
-    { label: 'Total Notes', value: '89', change: '+5%' },
-    { label: 'MCQ Tests', value: '23', change: '+8%' },
-    { label: 'Notifications', value: '156', change: '+15%' }
+  const statsDisplay = [
+    { label: 'Active Students', value: stats.activeStudents.toLocaleString() },
+    { label: 'Total Notes', value: stats.totalNotes.toLocaleString() },
+    { label: 'MCQ Tests', value: stats.mcqTests.toLocaleString() },
+    { label: 'Notifications', value: stats.notifications.toLocaleString() }
   ];
 
   return (
@@ -116,11 +133,10 @@ const AdminDashboard = () => {
         </div>
 
         <div className="admin-stats-grid">
-          {stats.map((stat, index) => (
+          {statsDisplay.map((stat, index) => (
             <div key={index} className="admin-stat-card">
               <div className="admin-stat-value">{stat.value}</div>
               <div className="admin-stat-label">{stat.label}</div>
-              <div className="admin-stat-change positive">{stat.change}</div>
             </div>
           ))}
         </div>

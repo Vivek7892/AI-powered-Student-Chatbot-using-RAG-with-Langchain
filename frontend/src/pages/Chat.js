@@ -151,7 +151,7 @@ const Chat = () => {
   });
 
   const renderQuiz = () => {
-    if (!quiz) return null;
+    if (!quiz || !Array.isArray(quiz)) return null;
     
     return (
       <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-2xl p-6 mb-6 shadow-sm">
