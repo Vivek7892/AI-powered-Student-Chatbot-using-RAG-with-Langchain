@@ -1,0 +1,142 @@
+.profile-page {
+  min-height: calc(100vh - 76px);
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 2.5rem;
+}
+
+.profile-hero {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: linear-gradient(135deg, #0ea5e9, #2563eb);
+  color: #fff;
+  border-radius: 1.25rem;
+  padding: 1.4rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.profile-hero__avatar {
+  width: 3.4rem;
+  height: 3.4rem;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.2);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 1.15rem;
+}
+
+.profile-hero h1 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.profile-hero p {
+  margin: 0.3rem 0 0;
+  font-size: 0.9rem;
+  opacity: 0.92;
+}
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.profile-card {
+  grid-column: span 6;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  padding: 1rem;
+}
+
+.profile-card--wide {
+  grid-column: span 12;
+}
+
+.profile-card h2 {
+  margin: 0 0 0.9rem;
+  font-size: 1.05rem;
+  color: #0f172a;
+}
+
+.profile-detail {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.7rem;
+  padding: 0.65rem 0.7rem;
+  margin-bottom: 0.55rem;
+  color: #334155;
+  font-size: 0.9rem;
+}
+
+.profile-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  padding: 0.7rem;
+  margin-bottom: 0.6rem;
+}
+
+.profile-toggle strong {
+  font-size: 0.9rem;
+  color: #0f172a;
+  display: block;
+}
+
+.profile-toggle small {
+  color: #64748b;
+  font-size: 0.76rem;
+}
+
+.profile-save-btn {
+  border: 0;
+  border-radius: 0.75rem;
+  background: #1d4ed8;
+  color: #fff;
+  padding: 0.62rem 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  cursor: pointer;
+}
+
+.profile-save-btn:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.profile-success {
+  margin-top: 0.7rem;
+  font-size: 0.82rem;
+  color: #15803d;
+}
+
+.profile-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.65rem;
+}
+
+.profile-links a {
+  text-decoration: none;
+  color: #1e40af;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 0.7rem;
+  padding: 0.65rem 0.7rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+@media (max-width: 850px) {
+  .profile-card {
+    grid-column: span 12;
+  }
+}
