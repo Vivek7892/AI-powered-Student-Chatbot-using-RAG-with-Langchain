@@ -1,8 +1,12 @@
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const GitHubStrategy = require('passport-github2').Strategy;
+const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const UserDashboard = require('../models/UserDashboard');
+
+passport.hasGoogleOAuth = false;
+passport.hasGithubOAuth = false;
 
 passport.serializeUser((user, done) => done(null, user.id));
 passport.deserializeUser(async (id, done) => {
@@ -14,74 +18,85 @@ passport.deserializeUser(async (id, done) => {
   }
 });
 
-// Google OAuth Strategy
-passport.use(new GoogleStrategy({
-  clientID: process.env.GOOGLE_CLIENT_ID,
-  clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-  callbackURL: process.env.GOOGLE_CALLBACK_URL
-}, async (accessToken, refreshToken, profile, done) => {
-  try {
-    let user = await User.findOne({ email: profile.emails[0].value });
-    
-    if (!user) {
-      user = await User.create({
-        email: profile.emails[0].value,
-        password: Math.random().toString(36).slice(-8),
-        phoneNumber: '',
-        semester: '1st',
-        oauthProvider: 'google',
-        oauthId: profile.id
-      });
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_CALLBACK_URL) {
+  // Google OAuth Strategy
+  passport.use(new GoogleStrategy({
+    clientID: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    callbackURL: process.env.GOOGLE_CALLBACK_URL
+  }, async (accessToken, refreshToken, profile, done) => {
+    try {
+      let user = await User.findOne({ email: profile.emails[0].value });
 
-      await UserDashboard.create({
-        userId: user._id,
-        personalizedContent: {
-          welcomeMessage: `Welcome ${profile.displayName || profile.emails[0].value.split('@')[0]}!`,
-          learningGoals: ['Master 1st semester concepts']
-        }
-      });
+      if (!user) {
+        user = await User.create({
+          email: profile.emails[0].value,
+          phoneNumber: '',
+          semester: 'Semester 1',
+          oauthProvider: 'google',
+          oauthId: profile.id
+        });
+
+        await UserDashboard.create({
+          userId: user._id,
+          personalizedContent: {
+            welcomeMessage: `Welcome ${profile.displayName || profile.emails[0].value.split('@')[0]}!`,
+            learningGoals: ['Master Semester 1 concepts']
+          }
+        });
+      } else if (!user.oauthProvider) {
+        user.oauthProvider = 'google';
+        user.oauthId = profile.id;
+        await user.save();
+      }
+
+      return done(null, user);
+    } catch (error) {
+      return done(error, null);
     }
-    
-    return done(null, user);
-  } catch (error) {
-    return done(error, null);
-  }
-}));
+  }));
+  passport.hasGoogleOAuth = true;
+}
 
-// GitHub OAuth Strategy
-passport.use(new GitHubStrategy({
-  clientID: process.env.GITHUB_CLIENT_ID,
-  clientSecret: process.env.GITHUB_CLIENT_SECRET,
-  callbackURL: process.env.GITHUB_CALLBACK_URL
-}, async (accessToken, refreshToken, profile, done) => {
-  try {
-    const email = profile.emails && profile.emails[0] ? profile.emails[0].value : `${profile.username}@github.local`;
-    let user = await User.findOne({ $or: [{ email }, { oauthId: profile.id, oauthProvider: 'github' }] });
-    
-    if (!user) {
-      user = await User.create({
-        email,
-        password: Math.random().toString(36).slice(-8),
-        phoneNumber: '',
-        semester: '1st',
-        oauthProvider: 'github',
-        oauthId: profile.id
-      });
+if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET && process.env.GITHUB_CALLBACK_URL) {
+  passport.use(new GitHubStrategy({
+    clientID: process.env.GITHUB_CLIENT_ID,
+    clientSecret: process.env.GITHUB_CLIENT_SECRET,
+    callbackURL: process.env.GITHUB_CALLBACK_URL
+  }, async (accessToken, refreshToken, profile, done) => {
+    try {
+      const email = profile.emails && profile.emails[0] ? profile.emails[0].value : `${profile.username}@github.local`;
+      let user = await User.findOne({ $or: [{ email }, { oauthId: profile.id, oauthProvider: 'github' }] });
 
-      await UserDashboard.create({
-        userId: user._id,
-        personalizedContent: {
-          welcomeMessage: `Welcome ${profile.displayName || profile.username}!`,
-          learningGoals: ['Master 1st semester concepts']
-        }
-      });
+      if (!user) {
+        user = await User.create({
+          email,
+          phoneNumber: '',
+          semester: 'Semester 1',
+          oauthProvider: 'github',
+          oauthId: profile.id
+        });
+
+        await UserDashboard.create({
+          userId: user._id,
+          personalizedContent: {
+            welcomeMessage: `Welcome ${profile.displayName || profile.username}!`,
+            learningGoals: ['Master Semester 1 concepts']
+          }
+        });
+      } else if (!user.oauthProvider) {
+        user.oauthProvider = 'github';
+        user.oauthId = profile.id;
+        await user.save();
+      }
+
+      return done(null, user);
+    } catch (error) {
+      console.error('GitHub OAuth error:', error);
+      return done(error, null);
     }
-    
-    return done(null, user);
-  } catch (error) {
-    console.error('GitHub OAuth error:', error);
-    return done(error, null);
-  }
-}));
+  }));
+  passport.hasGithubOAuth = true;
+}
 
 module.exports = passport;

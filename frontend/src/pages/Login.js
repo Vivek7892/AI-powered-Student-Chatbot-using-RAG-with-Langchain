@@ -2,11 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { API_BASE_URL } from '../config/api';
-import {
-  isFirebaseConfigured,
-  sendForgotPasswordFirebaseEmail,
-  signInWithGoogleForVerification
-} from '../services/firebaseAuth';
 import './Login.css';
 
 const MODES = {
@@ -15,22 +10,10 @@ const MODES = {
   FORGOT: 'forgot'
 };
 
-const SEMESTERS = [
-  'Semester 1',
-  'Semester 2',
-  'Semester 3',
-  'Semester 4',
-  'Semester 5',
-  'Semester 6',
-  'Semester 7',
-  'Semester 8'
-];
-
 const Login = () => {
-  const { login, signup, resetPasswordWithFirebaseOtp, user } = useAuth();
+  const { login, signup, sendForgotPasswordLink, resetPassword, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const firebaseEnabled = isFirebaseConfigured();
 
   const [mode, setMode] = useState(MODES.LOGIN);
   const [loading, setLoading] = useState(false);
@@ -43,15 +26,11 @@ const Login = () => {
   const [signupForm, setSignupForm] = useState({
     email: '',
     password: '',
-    confirmPassword: '',
-    phoneNumber: '',
-    semester: SEMESTERS[0],
-    googleIdToken: '',
-    verifiedGoogleEmail: ''
+    confirmPassword: ''
   });
   const [forgotForm, setForgotForm] = useState({
     email: '',
-    oobCode: '',
+    resetPasswordToken: '',
     newPassword: '',
     confirmPassword: ''
   });
@@ -65,16 +44,28 @@ const Login = () => {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const modeFromUrl = params.get('mode');
-    const oobCode = params.get('oobCode');
+    const email = params.get('email');
+    const resetPasswordToken = params.get('resetPasswordToken');
+    const errorCode = params.get('error');
 
     if (modeFromUrl === MODES.LOGIN || modeFromUrl === MODES.SIGNUP || modeFromUrl === MODES.FORGOT) {
       setMode(modeFromUrl);
     }
 
-    if (oobCode) {
-      setMode(MODES.FORGOT);
-      setForgotForm((current) => ({ ...current, oobCode }));
-      setInfo('Password reset code detected. Set your new password.');
+    if (modeFromUrl === MODES.FORGOT) {
+      if (email || resetPasswordToken) {
+        setForgotForm((current) => ({
+          ...current,
+          email: email || current.email,
+          resetPasswordToken: resetPasswordToken || current.resetPasswordToken
+        }));
+      }
+      if (resetPasswordToken) {
+        setInfo('Reset link verified. Enter your new password.');
+      }
+      if (errorCode === 'google_email_mismatch') {
+        setError('Google account email does not match the entered email.');
+      }
     }
   }, [location.search]);
 
@@ -104,42 +95,6 @@ const Login = () => {
     }
   };
 
-  const handleGoogleVerifyForSignup = async () => {
-    resetMessages();
-    if (!firebaseEnabled) {
-      setError('Firebase is not configured for Google verification.');
-      return;
-    }
-    if (!signupForm.email) {
-      setError('Enter your email before Google verification.');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const verified = await signInWithGoogleForVerification();
-      const typedEmail = signupForm.email.trim().toLowerCase();
-      const googleEmail = (verified.email || '').trim().toLowerCase();
-
-      if (!googleEmail) {
-        setError('Unable to read Google account email.');
-      } else if (typedEmail !== googleEmail) {
-        setError(`Google account email (${googleEmail}) does not match entered email.`);
-      } else {
-        setSignupForm((current) => ({
-          ...current,
-          googleIdToken: verified.idToken,
-          verifiedGoogleEmail: verified.email
-        }));
-        setInfo(`Google account verified: ${verified.email}`);
-      }
-    } catch (err) {
-      setError(err?.message || 'Google verification failed.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleCreateAccount = async (event) => {
     event.preventDefault();
     resetMessages();
@@ -149,25 +104,10 @@ const Login = () => {
       setError('Password and confirm password do not match.');
       return;
     }
-    if (!signupForm.googleIdToken) {
-      setError('Verify your email with Google before creating account.');
-      return;
-    }
-    if (email.toLowerCase() !== signupForm.verifiedGoogleEmail.trim().toLowerCase()) {
-      setError('Entered email does not match verified Google account.');
-      return;
-    }
 
     setLoading(true);
     try {
-      await signup(
-        email,
-        signupForm.password,
-        signupForm.phoneNumber.trim(),
-        signupForm.semester,
-        'captcha-placeholder-token',
-        signupForm.googleIdToken
-      );
+      await signup(email, signupForm.password);
       setInfo('Account created successfully. Please sign in.');
       setLoginForm((current) => ({ ...current, email }));
       setMode(MODES.LOGIN);
@@ -178,12 +118,8 @@ const Login = () => {
     }
   };
 
-  const handleSendForgotEmail = async () => {
+  const handleSendResetLink = async () => {
     resetMessages();
-    if (!firebaseEnabled) {
-      setError('Firebase is not configured for forgot password.');
-      return;
-    }
     if (!forgotForm.email) {
       setError('Enter your email first.');
       return;
@@ -191,10 +127,10 @@ const Login = () => {
 
     setLoading(true);
     try {
-      await sendForgotPasswordFirebaseEmail(forgotForm.email.trim());
-      setInfo('Password reset email sent. Open link and paste `oobCode` here.');
+      await sendForgotPasswordLink(forgotForm.email.trim());
+      setInfo('Reset link sent to your email. Open the link to create a new password.');
     } catch (err) {
-      setError(err?.message || 'Failed to send password reset email.');
+      setError(err?.response?.data?.error || 'Failed to send reset link.');
     } finally {
       setLoading(false);
     }
@@ -204,8 +140,8 @@ const Login = () => {
     event.preventDefault();
     resetMessages();
 
-    if (!forgotForm.oobCode) {
-      setError('Enter the password reset code (oobCode).');
+    if (!forgotForm.resetPasswordToken) {
+      setError('Open reset link from your email first.');
       return;
     }
     if (forgotForm.newPassword !== forgotForm.confirmPassword) {
@@ -215,7 +151,11 @@ const Login = () => {
 
     setLoading(true);
     try {
-      await resetPasswordWithFirebaseOtp(forgotForm.oobCode.trim(), forgotForm.newPassword);
+      await resetPassword(
+        forgotForm.email.trim(),
+        forgotForm.newPassword,
+        forgotForm.resetPasswordToken
+      );
       setInfo('Password reset successful. Please sign in.');
       setLoginForm((current) => ({ ...current, email: forgotForm.email.trim() }));
       setMode(MODES.LOGIN);
@@ -271,8 +211,8 @@ const Login = () => {
                 {mode === MODES.LOGIN
                   ? 'Use your account to open the student dashboard.'
                   : mode === MODES.SIGNUP
-                    ? 'Verify email with Google account and create your student account.'
-                    : 'Reset password with Firebase email verification.'}
+                    ? 'Create your student account.'
+                    : 'Send password reset link to your email.'}
               </p>
             </header>
 
@@ -314,7 +254,7 @@ const Login = () => {
                   <button
                     type="button"
                     className="login-btn login-btn--secondary"
-                    onClick={() => window.location.href = `${API_BASE_URL}/api/auth/google`}
+                    onClick={() => window.location.href = `${API_BASE_URL}/api/auth/google?frontend=${encodeURIComponent(window.location.origin)}`}
                     disabled={loading}
                   >
                     <span className="login-btn__content">Continue with Google</span>
@@ -322,7 +262,7 @@ const Login = () => {
                   <button
                     type="button"
                     className="login-btn login-btn--secondary"
-                    onClick={() => window.location.href = `${API_BASE_URL}/api/auth/github`}
+                    onClick={() => window.location.href = `${API_BASE_URL}/api/auth/github?frontend=${encodeURIComponent(window.location.origin)}`}
                     disabled={loading}
                   >
                     <span className="login-btn__content">Continue with GitHub</span>
@@ -343,40 +283,6 @@ const Login = () => {
                     onChange={(event) => setSignupForm((current) => ({ ...current, email: event.target.value }))}
                     required
                   />
-                </div>
-                <button
-                  type="button"
-                  className="login-btn login-btn--secondary"
-                  onClick={handleGoogleVerifyForSignup}
-                  disabled={loading}
-                >
-                  Verify with Google
-                </button>
-                <div className="login-form-group">
-                  <label htmlFor="signup-phone">Phone Number</label>
-                  <input
-                    id="signup-phone"
-                    type="tel"
-                    className="login-input"
-                    value={signupForm.phoneNumber}
-                    onChange={(event) => setSignupForm((current) => ({ ...current, phoneNumber: event.target.value }))}
-                    required
-                  />
-                </div>
-                <div className="login-form-group">
-                  <label htmlFor="signup-semester">Semester</label>
-                  <select
-                    id="signup-semester"
-                    className="login-input"
-                    value={signupForm.semester}
-                    onChange={(event) => setSignupForm((current) => ({ ...current, semester: event.target.value }))}
-                  >
-                    {SEMESTERS.map((semesterOption) => (
-                      <option key={semesterOption} value={semesterOption}>
-                        {semesterOption}
-                      </option>
-                    ))}
-                  </select>
                 </div>
                 <div className="login-form-group">
                   <label htmlFor="signup-password">Password</label>
@@ -417,7 +323,7 @@ const Login = () => {
             ) : null}
 
             {mode === MODES.FORGOT ? (
-              <form className="login-form" onSubmit={handleResetPassword}>
+              <form className="login-form" onSubmit={forgotForm.resetPasswordToken ? handleResetPassword : (e) => { e.preventDefault(); handleSendResetLink(); }}>
                 <div className="login-form-group">
                   <label htmlFor="forgot-email">Email</label>
                   <input
@@ -429,50 +335,44 @@ const Login = () => {
                     required
                   />
                 </div>
-                <button
-                  type="button"
-                  className="login-btn login-btn--ghost"
-                  onClick={handleSendForgotEmail}
-                  disabled={loading}
-                >
-                  Send Password Reset Email
-                </button>
-                <div className="login-form-group">
-                  <label htmlFor="forgot-code">Reset Code (oobCode)</label>
-                  <input
-                    id="forgot-code"
-                    type="text"
-                    className="login-input"
-                    value={forgotForm.oobCode}
-                    onChange={(event) => setForgotForm((current) => ({ ...current, oobCode: event.target.value }))}
-                    required
-                  />
-                </div>
-                <div className="login-form-group">
-                  <label htmlFor="forgot-new-password">New Password</label>
-                  <input
-                    id="forgot-new-password"
-                    type={showPassword ? 'text' : 'password'}
-                    className="login-input"
-                    value={forgotForm.newPassword}
-                    onChange={(event) => setForgotForm((current) => ({ ...current, newPassword: event.target.value }))}
-                    required
-                  />
-                </div>
-                <div className="login-form-group">
-                  <label htmlFor="forgot-confirm-password">Confirm New Password</label>
-                  <input
-                    id="forgot-confirm-password"
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    className="login-input"
-                    value={forgotForm.confirmPassword}
-                    onChange={(event) => setForgotForm((current) => ({ ...current, confirmPassword: event.target.value }))}
-                    required
-                  />
-                </div>
-                <button type="submit" className="login-btn login-btn--primary" disabled={loading}>
-                  <span className="login-btn__content">{loading ? 'Resetting password...' : 'Reset Password'}</span>
-                </button>
+                {!forgotForm.resetPasswordToken ? (
+                  <button
+                    type="submit"
+                    className="login-btn login-btn--ghost"
+                    disabled={loading}
+                  >
+                    Send Reset Link
+                  </button>
+                ) : null}
+                {forgotForm.resetPasswordToken ? (
+                  <>
+                    <div className="login-form-group">
+                      <label htmlFor="forgot-new-password">New Password</label>
+                      <input
+                        id="forgot-new-password"
+                        type={showPassword ? 'text' : 'password'}
+                        className="login-input"
+                        value={forgotForm.newPassword}
+                        onChange={(event) => setForgotForm((current) => ({ ...current, newPassword: event.target.value }))}
+                        required
+                      />
+                    </div>
+                    <div className="login-form-group">
+                      <label htmlFor="forgot-confirm-password">Confirm New Password</label>
+                      <input
+                        id="forgot-confirm-password"
+                        type={showConfirmPassword ? 'text' : 'password'}
+                        className="login-input"
+                        value={forgotForm.confirmPassword}
+                        onChange={(event) => setForgotForm((current) => ({ ...current, confirmPassword: event.target.value }))}
+                        required
+                      />
+                    </div>
+                    <button type="submit" className="login-btn login-btn--primary" disabled={loading}>
+                      <span className="login-btn__content">{loading ? 'Resetting password...' : 'Create New Password'}</span>
+                    </button>
+                  </>
+                ) : null}
               </form>
             ) : null}
 

@@ -37,32 +37,16 @@ export const AuthProvider = ({ children }) => {
     return response;
   };
 
-  const sendSignupOtp = async (email) => {
-    return await authService.sendSignupOtp(email);
-  };
-
-  const verifySignupOtp = async (email, otp) => {
-    return await authService.verifySignupOtp(email, otp);
-  };
-
-  const sendForgotPasswordOtp = async (email) => {
-    return await authService.sendForgotPasswordOtp(email);
-  };
-
-  const verifyForgotPasswordOtp = async (email, otp) => {
-    return await authService.verifyForgotPasswordOtp(email, otp);
+  const sendForgotPasswordLink = async (email) => {
+    return await authService.sendForgotPasswordLink(email);
   };
 
   const resetPassword = async (email, newPassword, resetPasswordToken) => {
     return await authService.resetPassword(email, newPassword, resetPasswordToken);
   };
 
-  const resetPasswordWithFirebaseOtp = async (oobCode, newPassword) => {
-    return await authService.resetPasswordWithFirebaseOtp(oobCode, newPassword);
-  };
-
-  const signup = async (email, password, phoneNumber, semester, captchaToken, googleIdToken) => {
-    return await authService.signup(email, password, phoneNumber, semester, captchaToken, googleIdToken);
+  const signup = async (email, password) => {
+    return await authService.signup(email, password);
   };
 
   const logout = () => {
@@ -73,12 +57,8 @@ export const AuthProvider = ({ children }) => {
   const value = {
     user,
     login,
-    sendSignupOtp,
-    verifySignupOtp,
-    sendForgotPasswordOtp,
-    verifyForgotPasswordOtp,
+    sendForgotPasswordLink,
     resetPassword,
-    resetPasswordWithFirebaseOtp,
     signup,
     logout,
     loading

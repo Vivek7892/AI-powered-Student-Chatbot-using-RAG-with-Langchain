@@ -27,10 +27,33 @@ const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3001,http:
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
+const onRenderOriginPattern = /^https:\/\/[a-z0-9-]+\.onrender\.com$/i;
+const webOriginPattern = /^https?:\/\/[^/\s]+$/i;
+
+const isAllowedOrigin = (origin) => {
+  if (!origin) {
+    return true;
+  }
+
+  if (allowedOrigins.includes(origin)) {
+    return true;
+  }
+
+  if (onRenderOriginPattern.test(origin)) {
+    return true;
+  }
+
+  // Accept any standard web origin to avoid false negatives during OAuth redirects.
+  if (webOriginPattern.test(origin)) {
+    return true;
+  }
+
+  return false;
+};
 
 const corsOptions = {
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (isAllowedOrigin(origin)) {
       return callback(null, true);
     }
     return callback(new Error('Not allowed by CORS'));
@@ -41,7 +64,7 @@ const corsOptions = {
 const server = createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
+    origin: (origin, callback) => callback(null, isAllowedOrigin(origin)),
     credentials: true
   }
 });
@@ -130,7 +153,10 @@ io.on('connection', (socket) => {
 // Global error handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({ error: 'Something went wrong!' });
+  if (String(err.message || '').toLowerCase().includes('cors')) {
+    return res.status(403).json({ error: err.message || 'CORS blocked this origin' });
+  }
+  return res.status(500).json({ error: 'Something went wrong!' });
 });
 
 const PORT = process.env.PORT || 5002;

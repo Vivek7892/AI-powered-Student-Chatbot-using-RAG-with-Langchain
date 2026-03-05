@@ -18,35 +18,14 @@ const hashOTP = (otp) => crypto.createHash('sha256').update(otp).digest('hex');
 const getOTPVerificationToken = (email, purpose) =>
   jwt.sign({ email, purpose }, process.env.JWT_SECRET, { expiresIn: '15m' });
 
-const getFirebaseApiKey = () => process.env.FIREBASE_WEB_API_KEY || process.env.FIREBASE_API_KEY;
-
-const verifyGoogleIdTokenWithFirebase = async (googleIdToken) => {
-  const firebaseApiKey = getFirebaseApiKey();
-  if (!firebaseApiKey) {
-    throw new Error('Firebase API key is not configured on server');
+const frontendOriginPattern = /^https?:\/\/[^/\s]+$/i;
+const resolveFrontendBase = (originHeader) => {
+  const rawOrigin = String(originHeader || '').trim().replace(/\/+$/, '');
+  if (frontendOriginPattern.test(rawOrigin)) {
+    return rawOrigin;
   }
 
-  const endpoint = `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${firebaseApiKey}`;
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ idToken: googleIdToken })
-  });
-  const data = await response.json();
-
-  if (!response.ok || !data.users || !data.users.length) {
-    return null;
-  }
-
-  const account = data.users[0];
-  const providerUserInfo = Array.isArray(account.providerUserInfo) ? account.providerUserInfo : [];
-  const hasGoogleProvider = providerUserInfo.some((provider) => provider.providerId === 'google.com');
-
-  return {
-    email: account.email || '',
-    emailVerified: Boolean(account.emailVerified),
-    hasGoogleProvider
-  };
+  return String((process.env.FRONTEND_URL || 'http://localhost:3000').split(',')[0]).trim().replace(/\/+$/, '');
 };
 
 const buildTransporter = () => {
@@ -253,6 +232,53 @@ const verifyForgotPasswordOTP = async (req, res) => {
   }
 };
 
+const sendForgotPasswordLink = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(400).json({ error: 'No account found with this email' });
+    }
+
+    const frontendBase = resolveFrontendBase(req.headers.origin);
+    const resetPasswordToken = jwt.sign(
+      { email, purpose: 'forgot_password_email_link' },
+      process.env.JWT_SECRET,
+      { expiresIn: '15m' }
+    );
+
+    const resetUrl = `${frontendBase}/login?mode=forgot&email=${encodeURIComponent(email)}&resetPasswordToken=${encodeURIComponent(resetPasswordToken)}`;
+
+    const transporter = buildTransporter();
+    if (!transporter) {
+      if (process.env.NODE_ENV === 'production') {
+        return res.status(500).json({ error: 'Password reset email is not configured on server' });
+      }
+      return res.json({
+        message: 'Password reset link created',
+        devResetLink: resetUrl
+      });
+    }
+
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to: email,
+      subject: 'Reset your password',
+      text: `Reset your password using this link: ${resetUrl}\nThis link will expire in 15 minutes.`,
+      html: `<p>Reset your password using this link:</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>This link will expire in 15 minutes.</p>`
+    });
+
+    return res.json({ message: 'Password reset link sent to your email' });
+  } catch (error) {
+    console.error('Send forgot password link error:', error);
+    return res.status(500).json({ error: 'Failed to send password reset link' });
+  }
+};
+
 const resetPassword = async (req, res) => {
   try {
     const { email, newPassword, resetPasswordToken } = req.body;
@@ -268,7 +294,8 @@ const resetPassword = async (req, res) => {
       return res.status(400).json({ error: 'Invalid or expired reset token. Verify OTP again.' });
     }
 
-    if (decoded.purpose !== 'forgot_password_otp_verified' || decoded.email !== email) {
+    const validPurposes = ['forgot_password_otp_verified', 'google_reset_verified', 'forgot_password_email_link'];
+    if (!validPurposes.includes(decoded.purpose) || decoded.email !== email) {
       return res.status(400).json({ error: 'Reset token does not match this email' });
     }
 
@@ -287,91 +314,29 @@ const resetPassword = async (req, res) => {
   }
 };
 
-const resetPasswordWithFirebaseOTP = async (req, res) => {
-  try {
-    const { oobCode, newPassword } = req.body;
-    const firebaseApiKey = getFirebaseApiKey();
-
-    if (!firebaseApiKey) {
-      return res.status(500).json({ error: 'Firebase API key is not configured on server' });
-    }
-
-    if (!oobCode || !newPassword) {
-      return res.status(400).json({ error: 'oobCode and new password are required' });
-    }
-
-    if (String(newPassword).length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
-    }
-
-    const endpoint = `https://identitytoolkit.googleapis.com/v1/accounts:resetPassword?key=${firebaseApiKey}`;
-
-    const verifyResponse = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ oobCode })
-    });
-    const verifyData = await verifyResponse.json();
-
-    if (!verifyResponse.ok || !verifyData.email) {
-      return res.status(400).json({ error: 'Invalid or expired Firebase OTP code' });
-    }
-
-    const applyResponse = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ oobCode, newPassword })
-    });
-    const applyData = await applyResponse.json();
-
-    if (!applyResponse.ok || applyData.error) {
-      return res.status(400).json({ error: 'Failed to apply Firebase password reset' });
-    }
-
-    const user = await User.findOne({ email: verifyData.email });
-    if (!user) {
-      return res.status(400).json({ error: 'No account found with this email' });
-    }
-
-    user.password = await bcrypt.hash(newPassword, 12);
-    await user.save();
-
-    return res.json({ message: 'Password reset successful. Please login with new password.' });
-  } catch (error) {
-    console.error('Firebase reset password error:', error);
-    return res.status(500).json({ error: 'Failed to reset password with Firebase OTP' });
-  }
-};
-
 const signup = async (req, res) => {
   try {
-    const { email, password, phoneNumber, semester, captchaToken, googleIdToken } = req.body;
+    const rawEmail = req.body.email || '';
+    const email = String(rawEmail).trim().toLowerCase();
+    const password = String(req.body.password || '');
+    const phoneNumber = String(req.body.phoneNumber || '').trim();
+    const semesterInput = String(req.body.semester || '').trim();
+    const allowedSemesters = ['Semester 1', 'Semester 2', 'Semester 3', 'Semester 4', 'Semester 5', 'Semester 6', 'Semester 7', 'Semester 8'];
+    const semester = allowedSemesters.includes(semesterInput) ? semesterInput : 'Semester 1';
 
-    if (!captchaToken) {
-      return res.status(400).json({ error: 'Captcha verification required' });
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    if (!googleIdToken) {
-      return res.status(400).json({ error: 'Google account verification is required' });
-    }
-
-    let googleProfile;
-    try {
-      googleProfile = await verifyGoogleIdTokenWithFirebase(googleIdToken);
-    } catch (googleError) {
-      return res.status(500).json({ error: 'Failed to verify Google account' });
-    }
-
-    if (!googleProfile || !googleProfile.emailVerified || !googleProfile.hasGoogleProvider) {
-      return res.status(400).json({ error: 'Invalid Google verification token' });
-    }
-
-    if (googleProfile.email.toLowerCase() !== email.toLowerCase()) {
-      return res.status(400).json({ error: 'Google account email does not match entered email' });
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
 
     const existingUser = await User.findOne({ email });
     if (existingUser) {
+      if (existingUser.oauthProvider) {
+        return res.status(400).json({ error: `Account already exists with ${existingUser.oauthProvider}. Use social login or reset password.` });
+      }
       return res.status(400).json({ error: 'User already exists' });
     }
 
@@ -419,16 +384,36 @@ const signup = async (req, res) => {
     });
   } catch (error) {
     console.error('Signup error:', error);
+    if (error?.code === 11000) {
+      return res.status(400).json({ error: 'User already exists' });
+    }
+    if (error?.name === 'ValidationError') {
+      const firstIssue = Object.values(error.errors || {})[0];
+      return res.status(400).json({ error: firstIssue?.message || 'Invalid registration data' });
+    }
     return res.status(500).json({ error: 'Registration failed' });
   }
 };
 
 const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const password = String(req.body.password || '');
+
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
 
     const user = await User.findOne({ email });
     if (!user) {
+      return res.status(400).json({ error: 'Invalid credentials' });
+    }
+
+    if (user.oauthProvider && !user.password) {
+      return res.status(400).json({ error: `This account uses ${user.oauthProvider} login. Please use the "Continue with ${user.oauthProvider === 'google' ? 'Google' : 'GitHub'}" button.` });
+    }
+
+    if (!user.password) {
       return res.status(400).json({ error: 'Invalid credentials' });
     }
 
@@ -474,8 +459,8 @@ module.exports = {
   verifySignupOTP,
   sendForgotPasswordOTP,
   verifyForgotPasswordOTP,
+  sendForgotPasswordLink,
   resetPassword,
-  resetPasswordWithFirebaseOTP,
   signup,
   login,
   getCurrentUser
