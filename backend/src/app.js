@@ -69,6 +69,8 @@ const io = new Server(server, {
   }
 });
 
+mongoose.set('bufferCommands', false);
+
 // Middleware
 app.set('trust proxy', 1); // Trust first proxy
 app.use(helmet());
@@ -85,13 +87,35 @@ app.use(limiter);
 app.use(passport.initialize());
 
 // Database connection
-mongoose.connect(process.env.MONGODB_URI)
+mongoose.connect(process.env.MONGODB_URI, {
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 45000
+})
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.error('MongoDB connection error:', err));
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+  const isDbConnected = mongoose.connection.readyState === 1;
+  res.json({
+    status: isDbConnected ? 'OK' : 'DEGRADED',
+    db: isDbConnected ? 'connected' : 'disconnected',
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.use('/api', (req, res, next) => {
+  if (req.path === '/health') {
+    return next();
+  }
+
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({
+      error: 'Database is not connected. Check MongoDB Atlas network access and MONGODB_URI.'
+    });
+  }
+
+  return next();
 });
 
 if (process.env.NODE_ENV === 'production' && hasFrontendBuild) {
