@@ -236,7 +236,8 @@ class ChatController {
         content = `I could not find relevant information about "${message}" in the selected documents. Try rephrasing your question or selecting different files.`;
         usedMode = 'docs';
       } else {
-        content = 'I could not find enough trusted information. Configure TAVILY_API_KEY for internet answers and OPENAI_API_KEY for improved synthesis.';
+        // No docs, no web results — answer directly with AI
+        content = await openaiService.synthesizeAnswer({ question: message });
       }
 
       const aiResponse = {

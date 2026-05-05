@@ -66,6 +66,12 @@ const Chat = () => {
     if (location.state?.messageType) {
       setMessageType(location.state.messageType);
     }
+    // Welcome message
+    setMessages([{
+      role: 'assistant',
+      content: 'Hi! I\'m your AI Student Assistant. You can chat with me, upload documents to ask questions about them, generate quizzes, or create study plans. How can I help you today?',
+      timestamp: new Date()
+    }]);
   }, [location.state]);
 
   const loadDocuments = async () => {
@@ -237,7 +243,7 @@ const Chat = () => {
   };
 
   const modeTitle = messageType === 'chat' ? 'Chat' : messageType === 'quiz' ? 'Quiz Generation' : 'Study Plan';
-  const requiresDocs = messageType === 'quiz' || messageType === 'study-plan' || (messageType === 'chat' && (chatMode === 'docs' || chatMode === 'hybrid'));
+  const requiresDocs = messageType === 'quiz' || messageType === 'study-plan' || (messageType === 'chat' && chatMode === 'docs');
   const sendDisabled = (messageType === 'chat' && !message.trim()) || loading || (requiresDocs && selectedDocs.length === 0);
 
   return (

@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { cloudinary, upload } = require('../config/cloudinary');
+const { cloudinary, upload, uploadToCloudinary } = require('../config/cloudinary');
 const path = require('path');
 const Admin = require('../models/Admin');
 const AdminNote = require('../models/AdminNote');
@@ -50,17 +50,14 @@ router.post('/login', async (req, res) => {
 router.post('/notes', adminAuth, upload.single('file'), async (req, res) => {
   try {
     const { title, content, semester } = req.body;
-    console.log('Received data:', { title, content, semester });
-    const note = new AdminNote({
-      title,
-      content,
-      semester,
-      fileName: req.file?.originalname,
-      filePath: req.file?.path,
-      uploadedBy: req.admin._id
-    });
+    let fileName, filePath;
+    if (req.file) {
+      const result = await uploadToCloudinary(req.file.buffer, req.file.originalname);
+      fileName = req.file.originalname;
+      filePath = result.secure_url;
+    }
+    const note = new AdminNote({ title, content, semester, fileName, filePath, uploadedBy: req.admin._id });
     await note.save();
-    console.log('Saved note:', note);
     res.json(note);
   } catch (error) {
     console.error('Error saving note:', error);
@@ -72,13 +69,12 @@ router.post('/notes', adminAuth, upload.single('file'), async (req, res) => {
 router.post('/timetable', adminAuth, upload.single('image'), async (req, res) => {
   try {
     const { title, description, semester } = req.body;
-    const timetable = new Timetable({
-      title,
-      description,
-      semester,
-      imagePath: req.file?.path,
-      createdBy: req.admin._id
-    });
+    let imagePath;
+    if (req.file) {
+      const result = await uploadToCloudinary(req.file.buffer, req.file.originalname);
+      imagePath = result.secure_url;
+    }
+    const timetable = new Timetable({ title, description, semester, imagePath, createdBy: req.admin._id });
     await timetable.save();
     res.json(timetable);
   } catch (error) {
@@ -108,15 +104,13 @@ router.post('/timetable/create', adminAuth, async (req, res) => {
 router.post('/important-notes', adminAuth, upload.single('file'), async (req, res) => {
   try {
     const { title, message, semester, priority } = req.body;
-    const note = new ImportantNote({
-      title,
-      message,
-      semester,
-      priority,
-      fileName: req.file?.originalname,
-      filePath: req.file?.path,
-      createdBy: req.admin._id
-    });
+    let fileName, filePath;
+    if (req.file) {
+      const result = await uploadToCloudinary(req.file.buffer, req.file.originalname);
+      fileName = req.file.originalname;
+      filePath = result.secure_url;
+    }
+    const note = new ImportantNote({ title, message, semester, priority, fileName, filePath, createdBy: req.admin._id });
     await note.save();
     res.json(note);
   } catch (error) {
@@ -232,8 +226,9 @@ router.put('/notes/:id', adminAuth, upload.single('file'), async (req, res) => {
     const { title, content, semester } = req.body;
     const updateData = { title, content, semester };
     if (req.file) {
+      const result = await uploadToCloudinary(req.file.buffer, req.file.originalname);
       updateData.fileName = req.file.originalname;
-      updateData.filePath = req.file.path;
+      updateData.filePath = result.secure_url;
     }
     const note = await AdminNote.findByIdAndUpdate(req.params.id, updateData, { new: true });
     res.json(note);
@@ -246,7 +241,10 @@ router.put('/timetable/:id', adminAuth, upload.single('image'), async (req, res)
   try {
     const { title, description, semester } = req.body;
     const updateData = { title, description, semester };
-    if (req.file) updateData.imagePath = req.file.path;
+    if (req.file) {
+      const result = await uploadToCloudinary(req.file.buffer, req.file.originalname);
+      updateData.imagePath = result.secure_url;
+    }
     const timetable = await Timetable.findByIdAndUpdate(req.params.id, updateData, { new: true });
     res.json(timetable);
   } catch (error) {
@@ -259,8 +257,9 @@ router.put('/important-notes/:id', adminAuth, upload.single('file'), async (req,
     const { title, message, semester, priority } = req.body;
     const updateData = { title, message, semester, priority };
     if (req.file) {
+      const result = await uploadToCloudinary(req.file.buffer, req.file.originalname);
       updateData.fileName = req.file.originalname;
-      updateData.filePath = req.file.path;
+      updateData.filePath = result.secure_url;
     }
     const note = await ImportantNote.findByIdAndUpdate(req.params.id, updateData, { new: true });
     res.json(note);
@@ -288,26 +287,30 @@ router.put('/mcq-tests/:id', adminAuth, async (req, res) => {
   }
 });
 
-// Download file
+// Download/redirect to file — files are on Cloudinary, redirect to URL
 router.get('/download/:type/:id', async (req, res) => {
   try {
     const { type, id } = req.params;
-    let filePath;
-    
+    let fileUrl;
+
     if (type === 'note') {
       const note = await AdminNote.findById(id);
-      filePath = note?.filePath;
+      fileUrl = note?.filePath;
     } else if (type === 'important') {
       const note = await ImportantNote.findById(id);
-      filePath = note?.filePath;
+      fileUrl = note?.filePath;
     } else if (type === 'timetable') {
       const timetable = await Timetable.findById(id);
-      filePath = timetable?.imagePath;
+      fileUrl = timetable?.imagePath;
     }
-    
-    if (!filePath) return res.status(404).json({ error: 'File not found' });
-    
-    res.download(filePath);
+
+    if (!fileUrl) return res.status(404).json({ error: 'File not found' });
+
+    // If it's a Cloudinary URL, redirect; otherwise 404
+    if (fileUrl.startsWith('http')) {
+      return res.redirect(fileUrl);
+    }
+    return res.status(404).json({ error: 'File not available' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

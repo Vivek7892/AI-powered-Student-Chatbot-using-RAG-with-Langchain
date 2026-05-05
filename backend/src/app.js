@@ -22,39 +22,26 @@ const dashboardRoutes = require('./routes/dashboard');
 const app = express();
 const frontendBuildPath = path.join(__dirname, '../../frontend/build');
 const hasFrontendBuild = fs.existsSync(frontendBuildPath);
+
 const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3001,http://localhost:3002')
   .split(',')
-  .map((origin) => origin.trim())
+  .map((o) => o.trim())
   .filter(Boolean);
-const onRenderOriginPattern = /^https:\/\/[a-z0-9-]+\.onrender\.com$/i;
+
+const onRenderPattern = /^https:\/\/[a-z0-9-]+\.onrender\.com$/i;
 const webOriginPattern = /^https?:\/\/[^/\s]+$/i;
 
 const isAllowedOrigin = (origin) => {
-  if (!origin) {
-    return true;
-  }
-
-  if (allowedOrigins.includes(origin)) {
-    return true;
-  }
-
-  if (onRenderOriginPattern.test(origin)) {
-    return true;
-  }
-
-  // Accept any standard web origin for browser clients.
-  if (webOriginPattern.test(origin)) {
-    return true;
-  }
-
+  if (!origin) return true;
+  if (allowedOrigins.includes(origin)) return true;
+  if (onRenderPattern.test(origin)) return true;
+  if (webOriginPattern.test(origin)) return true;
   return false;
 };
 
 const corsOptions = {
   origin: (origin, callback) => {
-    if (isAllowedOrigin(origin)) {
-      return callback(null, true);
-    }
+    if (isAllowedOrigin(origin)) return callback(null, true);
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true
@@ -71,18 +58,17 @@ const io = new Server(server, {
 mongoose.set('bufferCommands', false);
 
 // Middleware
-app.set('trust proxy', 1); // Trust first proxy
+app.set('trust proxy', 1);
 app.use(helmet());
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000 // limit each IP to 1000 requests per windowMs
-});
-app.use(limiter);
+app.use(rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000
+}));
 
 // Database connection
 mongoose.connect(process.env.MONGODB_URI, {
@@ -90,29 +76,27 @@ mongoose.connect(process.env.MONGODB_URI, {
   socketTimeoutMS: 45000
 })
   .then(() => console.log('MongoDB connected'))
-  .catch(err => console.error('MongoDB connection error:', err));
+  .catch((err) => console.error('MongoDB connection error:', err));
 
-// Health check endpoint
+// Health check — returns proper HTTP status for Render health monitor
 app.get('/api/health', (req, res) => {
   const isDbConnected = mongoose.connection.readyState === 1;
-  res.json({
+  res.status(isDbConnected ? 200 : 503).json({
     status: isDbConnected ? 'OK' : 'DEGRADED',
     db: isDbConnected ? 'connected' : 'disconnected',
+    uptime: Math.floor(process.uptime()),
     timestamp: new Date().toISOString()
   });
 });
 
+// Block all other /api routes if DB is not ready
 app.use('/api', (req, res, next) => {
-  if (req.path === '/health') {
-    return next();
-  }
-
+  if (req.path === '/health') return next();
   if (mongoose.connection.readyState !== 1) {
     return res.status(503).json({
       error: 'Database is not connected. Check MongoDB Atlas network access and MONGODB_URI.'
     });
   }
-
   return next();
 });
 
@@ -124,21 +108,13 @@ app.get('/', (req, res) => {
   if (process.env.NODE_ENV === 'production' && hasFrontendBuild) {
     return res.sendFile(path.join(frontendBuildPath, 'index.html'));
   }
-
-  return res.json({
-    status: 'OK',
-    message: 'Backend is running',
-    health: '/api/health'
-  });
+  return res.json({ status: 'OK', message: 'Backend is running', health: '/api/health' });
 });
 
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/chat', chatRoutes);
-app.use('/api/documents', (req, res, next) => {
-  console.log(`Document route: ${req.method} ${req.path}`);
-  next();
-}, documentRoutes);
+app.use('/api/documents', documentRoutes);
 app.use('/api/notes', notesRoutes);
 app.use('/api/quiz', quizRoutes);
 app.use('/api/user', userRoutes);
@@ -146,30 +122,23 @@ app.use('/api/test', testRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 
-// Serve uploaded files
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// Local uploads only in development (Render has ephemeral filesystem)
+if (process.env.NODE_ENV !== 'production') {
+  app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+}
 
+// SPA fallback for production
 if (process.env.NODE_ENV === 'production' && hasFrontendBuild) {
   app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
-      return next();
-    }
-
+    if (req.path.startsWith('/api')) return next();
     return res.sendFile(path.join(frontendBuildPath, 'index.html'));
   });
 }
 
-// Socket.io for real-time chat
+// Socket.io
 io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
-  
-  socket.on('join-chat', (userId) => {
-    socket.join(`user-${userId}`);
-  });
-  
-  socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
-  });
+  socket.on('join-chat', (userId) => socket.join(`user-${userId}`));
+  socket.on('disconnect', () => {});
 });
 
 // Global error handler
@@ -182,7 +151,7 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5002;
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
 });
 

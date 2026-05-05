@@ -26,6 +26,9 @@ const noteSchema = new mongoose.Schema({
   mimeType: {
     type: String,
     required: true
+  },
+  cloudinaryId: {
+    type: String
   }
 }, {
   timestamps: true

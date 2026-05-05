@@ -22,7 +22,7 @@ export const ChatProvider = ({ children }) => {
 
   useEffect(() => {
     if (user) {
-      const newSocket = io(process.env.REACT_APP_SOCKET_URL || 'http://localhost:5000');
+      const newSocket = io(process.env.REACT_APP_SOCKET_URL || 'https://ai-powered-student-chatbot-using-rag-ald2.onrender.com');
       
       newSocket.on('connect', () => {
         setIsConnected(true);

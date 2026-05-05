@@ -21,25 +21,39 @@ class RAGService {
     console.log('RAG Service initialized with Hugging Face');
   }
 
-  async extractTextFromFile(filePath, fileType) {
+  // bufferOrPath can be a Buffer (from multer memoryStorage) or a file path string
+  async extractTextFromFile(bufferOrPath, fileType) {
     try {
-      const fileBuffer = fs.readFileSync(filePath);
-      
+      const fileBuffer = Buffer.isBuffer(bufferOrPath)
+        ? bufferOrPath
+        : fs.readFileSync(bufferOrPath);
+
       switch (fileType) {
-        case 'pdf':
+        case 'pdf': {
           const pdfData = await pdfParse(fileBuffer);
           return pdfData.text;
-        case 'docx':
+        }
+        case 'docx': {
           const docxResult = await mammoth.extractRawText({ buffer: fileBuffer });
           return docxResult.value;
+        }
         case 'txt':
           return fileBuffer.toString('utf-8');
         case 'ppt':
-        case 'pptx':
-          const pptxData = await pptx2json.toJson(filePath);
-          return pptxData.slides.map(slide => 
-            slide.content.map(item => item.text || '').join(' ')
-          ).join('\n\n');
+        case 'pptx': {
+          // pptx2json needs a file path; write buffer to temp file
+          const os = require('os');
+          const tmpPath = require('path').join(os.tmpdir(), `tmp-${Date.now()}.pptx`);
+          fs.writeFileSync(tmpPath, fileBuffer);
+          try {
+            const pptxData = await pptx2json.toJson(tmpPath);
+            return pptxData.slides
+              .map(slide => slide.content.map(item => item.text || '').join(' '))
+              .join('\n\n');
+          } finally {
+            fs.unlinkSync(tmpPath);
+          }
+        }
         default:
           throw new Error(`Unsupported file type: ${fileType}`);
       }
