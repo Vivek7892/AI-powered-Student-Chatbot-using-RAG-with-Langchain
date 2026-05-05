@@ -19,7 +19,6 @@ import AdminTimetable from './pages/AdminTimetable';
 import AdminImportantNotes from './pages/AdminImportantNotes';
 import AdminMCQ from './pages/AdminMCQ';
 import TestTaker from './pages/TestTaker';
-import AuthCallback from './pages/AuthCallback';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminProtectedRoute from './components/AdminProtectedRoute';
 
@@ -31,7 +30,6 @@ function App() {
           <div className="App">
             <Routes>
               <Route path="/login" element={<Login />} />
-              <Route path="/auth/callback" element={<AuthCallback />} />
               <Route path="/" element={
                 <ProtectedRoute>
                   <Dashboard />

@@ -4,14 +4,13 @@ const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   password: { type: String, required: false },
   phoneNumber: { type: String, default: '' },
+  firebaseUid: { type: String, unique: true, sparse: true },
   semester: { 
     type: String, 
     required: true,
     enum: ['Semester 1', 'Semester 2', 'Semester 3', 'Semester 4', 'Semester 5', 'Semester 6', 'Semester 7', 'Semester 8', '1st'],
     default: '1st'
   },
-  oauthProvider: { type: String, enum: ['google', 'github', null], default: null },
-  oauthId: { type: String },
   dateOfBirth: Date,
   resumeUrl: String,
   preferences: {

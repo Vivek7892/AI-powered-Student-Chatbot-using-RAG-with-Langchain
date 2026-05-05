@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { onIdTokenChanged } from 'firebase/auth';
 import { authService } from '../services/authService';
+import { auth } from '../config/firebase';
 
 const AuthContext = createContext();
 
@@ -16,40 +18,72 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      authService.getCurrentUser()
-        .then(setUser)
-        .catch(() => {
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-        })
-        .finally(() => setLoading(false));
-    } else {
-      setLoading(false);
-    }
+    const unsubscribe = onIdTokenChanged(auth, async (firebaseUser) => {
+      if (!firebaseUser) {
+        localStorage.removeItem('token');
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const token = await firebaseUser.getIdToken();
+        localStorage.setItem('token', token);
+        const currentUser = await authService.getCurrentUser();
+        setUser(currentUser);
+      } catch (error) {
+        console.error('Auth sync error:', error);
+        setUser({
+          email: firebaseUser.email,
+          id: firebaseUser.uid
+        });
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const login = async (email, password) => {
-    const response = await authService.login(email, password);
-    localStorage.setItem('token', response.token);
-    setUser(response.user);
-    return response;
+    await authService.login(email, password);
+    const currentUser = await authService.getCurrentUser();
+    setUser(currentUser);
+    return { message: 'Login successful' };
+  };
+
+  const googleLogin = async () => {
+    await authService.googleSignIn();
+    const currentUser = await authService.getCurrentUser();
+    setUser(currentUser);
+    return { message: 'Login successful' };
+  };
+
+  const githubLogin = async () => {
+    await authService.githubSignIn();
+    const currentUser = await authService.getCurrentUser();
+    setUser(currentUser);
+    return { message: 'Login successful' };
   };
 
   const sendForgotPasswordLink = async (email) => {
     return await authService.sendForgotPasswordLink(email);
   };
 
-  const resetPassword = async (email, newPassword, resetPasswordToken) => {
-    return await authService.resetPassword(email, newPassword, resetPasswordToken);
+  const resetPassword = async (resetCode, newPassword) => {
+    return await authService.resetPassword(resetCode, newPassword);
+  };
+
+  const changePassword = async (currentPassword, newPassword) => {
+    return await authService.changePassword(currentPassword, newPassword);
   };
 
   const signup = async (email, password) => {
     return await authService.signup(email, password);
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await authService.logout();
     localStorage.removeItem('token');
     setUser(null);
   };
@@ -57,8 +91,11 @@ export const AuthProvider = ({ children }) => {
   const value = {
     user,
     login,
+    googleLogin,
+    githubLogin,
     sendForgotPasswordLink,
     resetPassword,
+    changePassword,
     signup,
     logout,
     loading

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { API_BASE_URL } from '../config/api';
 import './Login.css';
 
 const MODES = {
@@ -11,7 +10,7 @@ const MODES = {
 };
 
 const Login = () => {
-  const { login, signup, sendForgotPasswordLink, resetPassword, user } = useAuth();
+  const { login, signup, sendForgotPasswordLink, resetPassword, user, googleLogin, githubLogin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -21,6 +20,7 @@ const Login = () => {
   const [info, setInfo] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [resetCode, setResetCode] = useState('');
 
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
   const [signupForm, setSignupForm] = useState({
@@ -30,7 +30,6 @@ const Login = () => {
   });
   const [forgotForm, setForgotForm] = useState({
     email: '',
-    resetPasswordToken: '',
     newPassword: '',
     confirmPassword: ''
   });
@@ -45,27 +44,20 @@ const Login = () => {
     const params = new URLSearchParams(location.search);
     const modeFromUrl = params.get('mode');
     const email = params.get('email');
-    const resetPasswordToken = params.get('resetPasswordToken');
-    const errorCode = params.get('error');
+    const oobCode = params.get('oobCode');
 
     if (modeFromUrl === MODES.LOGIN || modeFromUrl === MODES.SIGNUP || modeFromUrl === MODES.FORGOT) {
       setMode(modeFromUrl);
     }
 
-    if (modeFromUrl === MODES.FORGOT) {
-      if (email || resetPasswordToken) {
-        setForgotForm((current) => ({
-          ...current,
-          email: email || current.email,
-          resetPasswordToken: resetPasswordToken || current.resetPasswordToken
-        }));
-      }
-      if (resetPasswordToken) {
-        setInfo('Reset link verified. Enter your new password.');
-      }
-      if (errorCode === 'google_email_mismatch') {
-        setError('Google account email does not match the entered email.');
-      }
+    if (email) {
+      setForgotForm((current) => ({ ...current, email }));
+    }
+
+    if (oobCode) {
+      setResetCode(oobCode);
+      setMode(MODES.FORGOT);
+      setInfo('Reset link verified. Enter your new password.');
     }
   }, [location.search]);
 
@@ -89,7 +81,33 @@ const Login = () => {
       await login(loginForm.email.trim(), loginForm.password);
       navigate('/');
     } catch (err) {
-      setError(err?.response?.data?.error || 'Login failed.');
+      setError(err?.message || 'Login failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    resetMessages();
+    setLoading(true);
+    try {
+      await googleLogin();
+      navigate('/');
+    } catch (err) {
+      setError(err?.message || 'Google sign-in failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGithubSignIn = async () => {
+    resetMessages();
+    setLoading(true);
+    try {
+      await githubLogin();
+      navigate('/');
+    } catch (err) {
+      setError(err?.message || 'GitHub sign-in failed.');
     } finally {
       setLoading(false);
     }
@@ -112,13 +130,14 @@ const Login = () => {
       setLoginForm((current) => ({ ...current, email }));
       setMode(MODES.LOGIN);
     } catch (err) {
-      setError(err?.response?.data?.error || 'Failed to create account.');
+      setError(err?.message || 'Failed to create account.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSendResetLink = async () => {
+  const handleSendResetLink = async (event) => {
+    event.preventDefault();
     resetMessages();
     if (!forgotForm.email) {
       setError('Enter your email first.');
@@ -128,9 +147,9 @@ const Login = () => {
     setLoading(true);
     try {
       await sendForgotPasswordLink(forgotForm.email.trim());
-      setInfo('Reset link sent to your email. Open the link to create a new password.');
+      setInfo('Reset link sent to your email. Use it to set a new password.');
     } catch (err) {
-      setError(err?.response?.data?.error || 'Failed to send reset link.');
+      setError(err?.message || 'Failed to send reset link.');
     } finally {
       setLoading(false);
     }
@@ -140,7 +159,7 @@ const Login = () => {
     event.preventDefault();
     resetMessages();
 
-    if (!forgotForm.resetPasswordToken) {
+    if (!resetCode) {
       setError('Open reset link from your email first.');
       return;
     }
@@ -151,16 +170,17 @@ const Login = () => {
 
     setLoading(true);
     try {
-      await resetPassword(
-        forgotForm.email.trim(),
-        forgotForm.newPassword,
-        forgotForm.resetPasswordToken
-      );
+      await resetPassword(resetCode, forgotForm.newPassword);
       setInfo('Password reset successful. Please sign in.');
-      setLoginForm((current) => ({ ...current, email: forgotForm.email.trim() }));
       setMode(MODES.LOGIN);
+      setResetCode('');
+      setForgotForm((current) => ({
+        ...current,
+        newPassword: '',
+        confirmPassword: ''
+      }));
     } catch (err) {
-      setError(err?.response?.data?.error || 'Failed to reset password.');
+      setError(err?.message || 'Failed to reset password.');
     } finally {
       setLoading(false);
     }
@@ -212,7 +232,7 @@ const Login = () => {
                   ? 'Use your account to open the student dashboard.'
                   : mode === MODES.SIGNUP
                     ? 'Create your student account.'
-                    : 'Send password reset link to your email.'}
+                    : 'Reset your password using Firebase email link.'}
               </p>
             </header>
 
@@ -248,26 +268,12 @@ const Login = () => {
                 <button type="submit" className="login-btn login-btn--primary" disabled={loading}>
                   <span className="login-btn__content">{loading ? 'Signing in...' : 'Sign in'}</span>
                 </button>
-
-                <div className="login-divider">Or continue with</div>
-                <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
-                  <button
-                    type="button"
-                    className="login-btn login-btn--secondary"
-                    onClick={() => window.location.href = `${API_BASE_URL}/api/auth/google?frontend=${encodeURIComponent(window.location.origin)}`}
-                    disabled={loading}
-                  >
-                    <span className="login-btn__content">Continue with Google</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="login-btn login-btn--secondary"
-                    onClick={() => window.location.href = `${API_BASE_URL}/api/auth/github?frontend=${encodeURIComponent(window.location.origin)}`}
-                    disabled={loading}
-                  >
-                    <span className="login-btn__content">Continue with GitHub</span>
-                  </button>
-                </div>
+                <button type="button" className="login-btn login-btn--google" onClick={handleGoogleSignIn} disabled={loading}>
+                  <span className="login-btn__content">Sign in with Google</span>
+                </button>
+                <button type="button" className="login-btn login-btn--google" onClick={handleGithubSignIn} disabled={loading}>
+                  <span className="login-btn__content">Sign in with GitHub</span>
+                </button>
               </form>
             ) : null}
 
@@ -323,7 +329,7 @@ const Login = () => {
             ) : null}
 
             {mode === MODES.FORGOT ? (
-              <form className="login-form" onSubmit={forgotForm.resetPasswordToken ? handleResetPassword : (e) => { e.preventDefault(); handleSendResetLink(); }}>
+              <form className="login-form" onSubmit={resetCode ? handleResetPassword : handleSendResetLink}>
                 <div className="login-form-group">
                   <label htmlFor="forgot-email">Email</label>
                   <input
@@ -333,9 +339,10 @@ const Login = () => {
                     value={forgotForm.email}
                     onChange={(event) => setForgotForm((current) => ({ ...current, email: event.target.value }))}
                     required
+                    disabled={Boolean(resetCode)}
                   />
                 </div>
-                {!forgotForm.resetPasswordToken ? (
+                {!resetCode ? (
                   <button
                     type="submit"
                     className="login-btn login-btn--ghost"
@@ -344,7 +351,7 @@ const Login = () => {
                     Send Reset Link
                   </button>
                 ) : null}
-                {forgotForm.resetPasswordToken ? (
+                {resetCode ? (
                   <>
                     <div className="login-form-group">
                       <label htmlFor="forgot-new-password">New Password</label>

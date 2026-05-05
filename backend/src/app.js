@@ -8,7 +8,6 @@ const path = require('path');
 const fs = require('fs');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
-const passport = require('./config/passport');
 
 const authRoutes = require('./routes/auth');
 const chatRoutes = require('./routes/chat');
@@ -43,7 +42,7 @@ const isAllowedOrigin = (origin) => {
     return true;
   }
 
-  // Accept any standard web origin to avoid false negatives during OAuth redirects.
+  // Accept any standard web origin for browser clients.
   if (webOriginPattern.test(origin)) {
     return true;
   }
@@ -84,7 +83,6 @@ const limiter = rateLimit({
   max: 1000 // limit each IP to 1000 requests per windowMs
 });
 app.use(limiter);
-app.use(passport.initialize());
 
 // Database connection
 mongoose.connect(process.env.MONGODB_URI, {
